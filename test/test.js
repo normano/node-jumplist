@@ -1,6 +1,6 @@
 'use strict';
 const assert = require("assert");
-const JumpList = require("../dist").default;
+const JumpList = require("../dist/node/index").default;
 
 JumpList.prototype.print = function() {
 

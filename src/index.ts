@@ -1,3 +1,8 @@
+export interface JumpNode<Key, Value> {
+  key: Key;
+  value: Value;
+}
+
 interface JumpNodeEntry<Key, Value> {
   key: Key;
   value: Value;
@@ -5,15 +10,15 @@ interface JumpNodeEntry<Key, Value> {
   item?: () => JumpNode<Key, Value>;
 }
 
-export interface JumpNode<Key, Value> {
-  key: Key;
-  value: Value;
-}
-
 interface JumpNodeTableNode<Key, Value> {
   cnt: number;
-  next: JumpNodeEntry<Key, Value>;
-  prev: JumpNodeEntry<Key, Value>;
+  next: JumpNodeEntry<Key, Value> | null;
+  prev: JumpNodeEntry<Key, Value> | null;
+}
+
+export interface JumpOpts<Key> {
+  genRate?: number;
+  compareFunc?: CompareFn<Key>;
 }
 
 type CompareFn<Key> = (k1: Key, k2: Key) => number;
@@ -21,54 +26,45 @@ type CompareFn<Key> = (k1: Key, k2: Key) => number;
 export type JumpForEachCallback<Key, Value> = (key: Key, value: Value, index: number) => boolean | void;
 export type JumpMapCallback<Key, Value, Output> = (key: Key, value: Value) => Output;
 
-export interface JumpOpts<Key> {
-  genRate?: number;
-  compareFunc?: CompareFn<Key>;
-}
-
-function defaultCompareFn<Key>(k1: Key, k2: Key): number {
-  return k1 > k2 ? 1 : (k1 == k2 ? 0 : -1);
-}
-
-const defaultOpts = {
+const defaultOpts: JumpOpts<any> = Object.freeze({
   "compareFunc": defaultCompareFn,
   "genRate": 0.25
-};
+});
 
 export default class JumpList<Key = any, Value = any> {
 
-  private root: JumpNodeEntry<Key, Value>;
-  private genRate: number;
-  private compare: CompareFn<Key>;
+  #root: JumpNodeEntry<Key, Value>;
+  #genRate: number;
+  #compare: CompareFn<Key>;
 
   constructor(opts?: JumpOpts<Key>) {
 
     opts = opts || {};
 
-    this.compare = ("compareFunc" in opts) ? opts.compareFunc : defaultOpts.compareFunc;
-    this.genRate = ("genRate" in opts) ? opts.genRate : defaultOpts.genRate;
+    this.#compare = (opts.compareFunc) ? opts.compareFunc : defaultOpts.compareFunc as any;
+    this.#genRate = (opts.genRate) ? opts.genRate : defaultOpts.genRate as any;
 
-    this.root = {
-      key: null, 
-      value: null,
+    this.#root = {
+      key: null!, 
+      value: null!,
       jumpTable: [],
     };
   }
 
-  public size = () => {
+  public size() {
 
-    if(this.root.jumpTable.length > 0) {
+    if(this.#root.jumpTable.length > 0) {
 
-      let highLevel = this.root.jumpTable.length - 1;
-      let p = this.root;
+      let highLevel = this.#root.jumpTable.length - 1;
+      let p = this.#root;
       let sumCnt = 0;
 
       do {
 
         sumCnt += p.jumpTable[highLevel].cnt;
-        p = p.jumpTable[highLevel].next;
+        p = p.jumpTable[highLevel].next!;
 
-      } while(this.valid(p));
+      } while(this.#valid(p));
 
       return sumCnt - 1;
     } else {
@@ -78,50 +74,66 @@ export default class JumpList<Key = any, Value = any> {
   }
 
   public isEmpty(): boolean {
-    return this.root.jumpTable.length < 1;
+    return this.#root.jumpTable.length < 1;
   }
   
-  public getAt = (index: number): JumpNode<Key, Value> => {
+  public getAt(index: number): JumpNode<Key, Value> | null {
 
     if(index < 0) {
       return null;
     }
 
-    let level = this.root.jumpTable.length - 1;
+    let level = this.#root.jumpTable.length - 1;
     
     if(level < 0) {
       return null;
     }
 
-    for(; level > 0 && this.root.jumpTable[level].cnt > index; level--) {}
+    for(; level > 0 && this.#root.jumpTable[level].cnt > index; level--) {}
 
-    let rawNode = this.skip(
-      this.root.jumpTable[level].next,
-      index - this.root.jumpTable[level].cnt + 1,
+    let rawNode = this.#skip(
+      this.#root.jumpTable[level].next!,
+      index - this.#root.jumpTable[level].cnt + 1,
       level,
     );
 
     if(rawNode) {
-      return rawNode.item();
+      return rawNode.item!();
     }
+
+    return null;
   }
   
-  public get = (key: Key): Value => {
+  public get(key: Key): Value | null {
     
     let node = this.getNode(key);
 
     if(node) {
       return node.value;
     }
+
+    return null;
+  }
+
+  public getNode(key: Key): JumpNodeEntry<Key, Value> | null {
+
+    var bounds = this.#prevNodes(key);
+    let keyNode: JumpNodeEntry<Key, Value> = createKeyNode(key);
+
+    if(bounds.length > 0 && this.#compareNode(bounds[0], keyNode) == 0) {
+      return Object.assign({}, bounds[0]);
+    }
+    
+    return null;
   }
   
-  public set = (key: Key, val: Value) => {
+  public set(key: Key, val: Value): void {
 
-    let bounds = this.prevNodes(key);
+    let bounds = this.#prevNodes(key);
     let keyNode: JumpNodeEntry<Key, Value> = createKeyNode(key);
     
     // Modify existing node or else add new one
-    if(bounds.length > 0 && this.compareNode(bounds[0], keyNode) == 0) {
+    if(bounds.length > 0 && this.#compareNode(bounds[0], keyNode) == 0) {
 
       bounds[0].value = val;
     } else {
@@ -167,25 +179,25 @@ export default class JumpList<Key = any, Value = any> {
             prev: node
           };
 
-          this.root.jumpTable.push(rootSkip);
-          skip.next = this.root;
-          skip.prev = this.root;
-          bounds.push(this.root);
+          this.#root.jumpTable.push(rootSkip);
+          skip.next = this.#root;
+          skip.prev = this.#root;
+          bounds.push(this.#root);
         }
 
         node.jumpTable.push(skip);
-        r *= this.genRate;
+        r *= this.#genRate;
         level++;
       }
   
       for(let level = 0; level < node.jumpTable.length; level++) {
 
-        this.updateCount(node, level);
+        this.#updateCount(node, level);
       }
 
       for(let level = 0; level < bounds.length; level++) {
 
-        this.updateCount(bounds[level], level);
+        this.#updateCount(bounds[level], level);
       }
     }
   }
@@ -193,34 +205,34 @@ export default class JumpList<Key = any, Value = any> {
   /**
    * Remove an element by key
    */
-  public remove = (key) => {
+  public remove (key: Key) {
 
     let keyNode: JumpNodeEntry<Key, Value> = createKeyNode(key);
-    let bounds = this.prevNodes(key);
+    let bounds = this.#prevNodes(key);
     
-    if(bounds.length > 0 && this.compareNode(bounds[0], keyNode) == 0) {
+    if(bounds.length > 0 && this.#compareNode(bounds[0], keyNode) == 0) {
       
       let node = bounds[0];
 
       for(let level=0; level<node.jumpTable.length; level++) {
 
-        if(this.compareNode(bounds[level], keyNode) == 0) {
+        if(this.#compareNode(bounds[level], keyNode) == 0) {
 
-          bounds[level] = node.jumpTable[level].prev;
+          bounds[level] = node.jumpTable[level].prev!;
         }
 
-        let next = node.jumpTable[level].next;
-        let prev = node.jumpTable[level].prev;
+        let next = node.jumpTable[level].next!;
+        let prev = node.jumpTable[level].prev!;
 
         next.jumpTable[level].prev = prev;
         prev.jumpTable[level].next = next;
       }
   
-      for(let level = this.root.jumpTable.length - 1; level >= 0; level--) {
+      for(let level = this.#root.jumpTable.length - 1; level >= 0; level--) {
 
-        if(!this.valid(this.root.jumpTable[level].next)) {
+        if(!this.#valid(this.#root.jumpTable[level].next)) {
 
-          this.root.jumpTable.pop();
+          this.#root.jumpTable.pop();
           bounds.pop();
         }
       }
@@ -229,7 +241,7 @@ export default class JumpList<Key = any, Value = any> {
 
         if(bounds[level]) {
 
-          this.updateCount(bounds[level], level);
+          this.#updateCount(bounds[level], level);
         }
       }
 
@@ -244,7 +256,7 @@ export default class JumpList<Key = any, Value = any> {
    * Return a iterator of elems where startKey <= elem.key <= endKey
    * 
    */ 
-  public range = (startKey: Key, endKey: Key, callback: JumpForEachCallback<Key, Value>) => {
+  public range(startKey: Key, endKey: Key, callback: JumpForEachCallback<Key, Value>) {
 
     let node;
 
@@ -255,30 +267,30 @@ export default class JumpList<Key = any, Value = any> {
     let startKeyNode: JumpNodeEntry<Key, Value> = createKeyNode(startKey);
     let endKeyNode: JumpNodeEntry<Key, Value> = createKeyNode(endKey);
 
-    if(this.compareNode(startKeyNode, endKeyNode) <= 0) {
+    if(this.#compareNode(startKeyNode, endKeyNode) <= 0) {
 
-      let bounds = this.prevNodes(startKey);
+      let bounds = this.#prevNodes(startKey);
 
       if(bounds.length > 0) {
 
-        node = this.compareNode(bounds[0], startKeyNode) == 0 ? bounds[0] : bounds[0].jumpTable[0].next;
+        node = this.#compareNode(bounds[0], startKeyNode) == 0 ? bounds[0] : bounds[0].jumpTable[0].next;
       } else {
 
-        node = this.root.jumpTable[0].next;
+        node = this.#root.jumpTable[0].next;
       }
 
       let count = 0;
 
-      for(;node && this.compareNode(node, endKeyNode) <= 0; node = node.jumpTable[0].next) {
+      for(;node && this.#compareNode(node, endKeyNode) <= 0; node = node.jumpTable[0].next) {
 
-        if(false === callback(node.key, node.value, count++) || !this.valid(node.jumpTable[0].next)) {
+        if(false === callback(node.key, node.value, count++) || !this.#valid(node.jumpTable[0].next)) {
           break;
         }
       }
 
     } else {
 
-      let bounds = this.prevNodes(startKey);
+      let bounds = this.#prevNodes(startKey);
 
       if(bounds.length > 0) {
         node = bounds[0];
@@ -288,9 +300,9 @@ export default class JumpList<Key = any, Value = any> {
 
       let count = 0;
 
-      for(; node && this.compareNode(node, endKeyNode) >= 0; node = node.jumpTable[0].prev) {
+      for(; node && this.#compareNode(node, endKeyNode) >= 0; node = node.jumpTable[0].prev) {
 
-        if(false === callback(node.key, node.value, count++) || !this.valid(node.jumpTable[0].prev)) {
+        if(false === callback(node.key, node.value, count++) || !this.#valid(node.jumpTable[0].prev)) {
           break;
         }
       }    
@@ -300,19 +312,19 @@ export default class JumpList<Key = any, Value = any> {
   /** 
    * Gets all nodes with keys in [min, end]
    */
-  public rangeUpper = (min, callback: JumpForEachCallback<Key, Value>) => {
+  public rangeUpper(min: Key, callback: JumpForEachCallback<Key, Value>) {
 
     if (this.isEmpty()) {
       return null;
     }
 
-    return this.range(min, this.tail().key, callback);
+    return this.range(min, this.tail()!.key, callback);
   }
 
   /**
    * Gets all nodes with keys in [begin, max]
    */
-  public rangeLower = (max, callback: JumpForEachCallback<Key, Value>) => {
+  public rangeLower(max: Key, callback: JumpForEachCallback<Key, Value>) {
 
     if (this.isEmpty()) {
       return null;
@@ -321,34 +333,34 @@ export default class JumpList<Key = any, Value = any> {
     this.range(this.head().key, max, callback);
   }
   
-  public tail = (): JumpNode<Key, Value> => {
+  public tail(): JumpNode<Key, Value> | null {
 
-    let prev = this.root.jumpTable[0].prev;
+    let prev = this.#root.jumpTable[0].prev;
 
     if(prev) {
 
-      return prev.item();
+      return prev.item!();
     }
 
     return null;
   }
   
-  public head = (): JumpNode<Key, Value> => {
+  public head(): JumpNode<Key, Value> {
 
-    return this.root.jumpTable[0].next.item();
+    return this.#root.jumpTable[0].next!.item!();
   }
   
-  public forEach = (callback: JumpForEachCallback<Key, Value>) => {
+  public forEach(callback: JumpForEachCallback<Key, Value>) {
 
     if(this.isEmpty()) {
 
       return null;
     }
 
-    let p = this.root.jumpTable[0].next;
+    let p = this.#root.jumpTable[0].next!;
     let i = 0;
 
-    while(this.valid(p)) {
+    while(this.#valid(p)) {
 
       let r = callback(p.key, p.value, i++);
 
@@ -356,13 +368,13 @@ export default class JumpList<Key = any, Value = any> {
         break;
       }
 
-      p = p.jumpTable[0].next;
+      p = p.jumpTable[0].next!;
     }
   }
   
-  public map = <Output>(callback: JumpMapCallback<Key, Value, Output>): Output[] => {
+  public map<Output>(callback: JumpMapCallback<Key, Value, Output>): Output[] {
 
-    let arr = [];
+    let arr: Output[] = [];
 
     this.forEach((key: Key, value: Value) => {
 
@@ -375,29 +387,29 @@ export default class JumpList<Key = any, Value = any> {
     return arr;
   }
   
-  public clear = (): void => {
+  public clear(): void {
 
-    if(this.root.jumpTable.length < 1) {
+    if(this.#root.jumpTable.length < 1) {
 
       return;
     }
 
-    let p = this.root.jumpTable[0].next;
+    let p = this.#root.jumpTable[0].next!;
 
-    while(this.valid(p)) {
+    while(this.#valid(p)) {
       
-      let nextp = p.jumpTable[0].next;
+      let nextp = p.jumpTable[0].next!;
       p.jumpTable = [];
       p = nextp;
     }
 
-    this.root = {key: null, value: null, jumpTable:[]};
+    this.#root = {key: null!, value: null!, jumpTable:[]};
   }
 
-  private compareNode = (n1: JumpNodeEntry<Key, Value>, n2: JumpNodeEntry<Key, Value>): number => {
+  #compareNode(n1: JumpNodeEntry<Key, Value> | null, n2: JumpNodeEntry<Key, Value> | null): number {
 
-    let node1IsRoot = n1 == this.root;
-    let node2IsRoot = n2 == this.root;
+    let node1IsRoot = n1 == this.#root;
+    let node2IsRoot = n2 == this.#root;
 
     if(node1IsRoot && node2IsRoot) {
 
@@ -410,44 +422,44 @@ export default class JumpList<Key = any, Value = any> {
       return 1;
     } else {
 
-      return this.compare(n1.key, n2.key);
+      return this.#compare(n1!.key, n2!.key);
     }
   }
 
-  private valid = (node: JumpNodeEntry<Key, Value>): boolean => {
+  #valid(node: JumpNodeEntry<Key, Value> | null): boolean {
 
-    return !!node && node != this.root;
+    return !!node && node != this.#root;
   }
 
-  private prevNode = (start: JumpNodeEntry<Key, Value>, level, targetNode: JumpNodeEntry<Key, Value>): JumpNodeEntry<Key, Value> => {
+  #prevNode(start: JumpNodeEntry<Key, Value>, level: number, targetNode: JumpNodeEntry<Key, Value>): JumpNodeEntry<Key, Value> | null {
    
-    if(this.compareNode(start, targetNode) > 0) {
+    if(this.#compareNode(start, targetNode) > 0) {
 
       return null;
     }
 
-    while(this.valid(start.jumpTable[level].next)) {
+    while(this.#valid(start.jumpTable[level].next)) {
       
-      if(this.compareNode(start.jumpTable[level].next, targetNode) > 0) {
+      if(this.#compareNode(start.jumpTable[level].next, targetNode) > 0) {
 
 	      return start;
       }
 
-      start = start.jumpTable[level].next;
+      start = start.jumpTable[level].next!;
     }
 
     return start;
   }
 
-  private prevNodes = (key: Key): JumpNodeEntry<Key, Value>[] => {
+  #prevNodes(key: Key): JumpNodeEntry<Key, Value>[] {
 
     var nodes: JumpNodeEntry<Key, Value>[] = [];
-    let start = this.root;
+    let start = this.#root;
     let keyNode: JumpNodeEntry<Key, Value> = createKeyNode(key);
 
-    for(let level = this.root.jumpTable.length - 1; level >= 0; level--) {
+    for(let level = this.#root.jumpTable.length - 1; level >= 0; level--) {
 
-      var prevNode = this.prevNode(start, level, keyNode);
+      var prevNode = this.#prevNode(start, level, keyNode);
 
       if(prevNode) {
 	      nodes.push(prevNode);
@@ -459,7 +471,7 @@ export default class JumpList<Key = any, Value = any> {
     return nodes;
   }
   
-  private updateCount = (node: JumpNodeEntry<Key, Value>, level: number) => {
+  #updateCount(node: JumpNodeEntry<Key, Value>, level: number): void {
 
     if(level == 0) {
 
@@ -472,14 +484,14 @@ export default class JumpList<Key = any, Value = any> {
 
       while(true) {
 
-        if(this.valid(next) && this.compareNode(p, next) >= 0) {
+        if(this.#valid(next) && this.#compareNode(p, next) >= 0) {
           break;
         }
 
         sumCnt += p.jumpTable[level-1].cnt;
-        p = p.jumpTable[level-1].next;
+        p = p.jumpTable[level-1].next!;
 
-        if(!this.valid(p)) {
+        if(!this.#valid(p)) {
           break;
         }
       }
@@ -488,20 +500,10 @@ export default class JumpList<Key = any, Value = any> {
     }
   }
 
-  public getNode = (key: Key): JumpNodeEntry<Key, Value> => {
-
-    var bounds = this.prevNodes(key);
-    let keyNode: JumpNodeEntry<Key, Value> = createKeyNode(key);
-
-    if(bounds.length > 0 && this.compareNode(bounds[0], keyNode) == 0) {
-      return Object.assign({}, bounds[0]);
-    }
-  }
-
-  private skip = (node: JumpNodeEntry<Key, Value>, n: number, level: number): JumpNodeEntry<Key, Value> => {
+  #skip(node: JumpNodeEntry<Key, Value>, n: number, level: number): JumpNodeEntry<Key, Value> | null {
     
     if(level == undefined) {
-      level = this.root.jumpTable.length - 1;
+      level = this.#root.jumpTable.length - 1;
     }
 
     let sumn = 0;
@@ -514,9 +516,9 @@ export default class JumpList<Key = any, Value = any> {
       ) {
 
         sumn += node.jumpTable[level].cnt;
-        node = node.jumpTable[level].next;
+        node = node.jumpTable[level].next!;
 
-        if(!this.valid(node)) {
+        if(!this.#valid(node)) {
 
           break;
         }
@@ -529,6 +531,8 @@ export default class JumpList<Key = any, Value = any> {
 	      level--;
       }
     }
+
+    return null;
   }
 }
 
@@ -536,7 +540,11 @@ function createKeyNode<Key, Value>(key: Key): JumpNodeEntry<Key, Value> {
 
   return {
     key,
-    value: null,
-    jumpTable: null
+    "value": null!,
+    "jumpTable": null!,
   };
+}
+
+function defaultCompareFn<Key>(k1: Key, k2: Key): number {
+  return k1 > k2 ? 1 : (k1 == k2 ? 0 : -1);
 }

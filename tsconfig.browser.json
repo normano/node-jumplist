@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "rootDir": "src",
+    "outDir": "dist/browser",
+    "target": "ES2015",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "sourceMap": true,
+    "allowSyntheticDefaultImports": true,
+    "downlevelIteration": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "esModuleInterop": true,
+    "strict": false,
+    "strictNullChecks": false,
+    "noImplicitAny": false,
+    "noImplicitReturns": false,
+    "noImplicitThis": false,
+    "noUnusedParameters":  false,
+    "noUnusedLocals": false,
+    "resolveJsonModule": true
+  },
+  "include": [
+    "./src/**/*.ts",
+    "./src/**/*.js"
+  ],
+  "exclude": [
+    "./tests/**/*.ts"
+  ]
+}
