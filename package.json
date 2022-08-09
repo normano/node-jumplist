@@ -1,6 +1,6 @@
 {
   "name": "@excsn/jumplist",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "A SkipList",
   "author": "Norm O <normo.pub@gmail.com>",
   "contributors": [
@@ -20,9 +20,16 @@
     "data",
     "structure"
   ],
+  "type": "module",
   "main": "dist/cjs/index.cjs",
   "browser": "dist/browser/index.js",
   "module": "dist/esm/index.mjs",
+  "exports": {
+    ".": {
+      "require": "./dist/cjs/index.cjs",
+      "import": "./dist/esm/index.mjs"
+    }
+  },
   "directories": {
     "test": "test"
   },
