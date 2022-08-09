@@ -1,16 +1,16 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "_intermediate/mjs",
-    "outDir": "dist/esm",
+    "rootDir": "_intermediate/cjs",
+    "outDir": "dist/cjs",
     "target": "esnext",
     "module": "esnext",
     "declaration": true
   },
   "include": [
-    "./_intermediate/mjs/**/*"
+    "./_intermediate/cjs/**/*.cts"
   ],
   "exclude": [
-    "./tests/**/*.mts"
+    "./tests/**/*.cts"
   ]
 }
