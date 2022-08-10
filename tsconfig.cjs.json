@@ -4,7 +4,7 @@
     "rootDir": "_intermediate/cjs",
     "outDir": "dist/cjs",
     "target": "esnext",
-    "module": "esnext",
+    "module": "CommonJS",
     "declaration": true
   },
   "include": [
